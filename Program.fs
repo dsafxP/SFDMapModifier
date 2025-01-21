@@ -159,10 +159,17 @@ let modifyPublishIdHeader(filePath: string, publishId: string) =
     | ex -> printfn "An error occurred: %s" ex.Message
 
 let choosePublishIdHeader (filePath: string) =
-    printf "Enter the new Publish ID: "
-    let publishId = Console.ReadLine()
+    let isValidPublishId (publishId: string) =
+        // Check if publish ID is digits only and at least 10 characters long
+        publishId |> String.forall Char.IsDigit && publishId.Length >= 10
 
-    modifyPublishIdHeader(filePath, publishId)
+    printf "Enter the new Publish ID: "
+    let publishId = Console.ReadLine().Trim()
+
+    if isValidPublishId publishId then
+        modifyPublishIdHeader(filePath, publishId)
+    else
+        printfn "Error: Publish ID must be at least 10 digits long and contain only numeric characters."
 
 [<EntryPoint>]
 let main argv =
