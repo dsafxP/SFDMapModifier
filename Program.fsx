@@ -2,6 +2,9 @@
 open System.IO
 open System.Text
 
+let fileExtension = ".sfdm"
+let appendName = "_modified"
+
 type SFDBinaryReader(stream: Stream) =
     inherit BinaryReader(stream)
 
@@ -37,8 +40,6 @@ type SFDBinaryWriter(stream: Stream) =
 
     override this.Dispose(disposing: bool) =
         if this.AutoCloseStream then base.Dispose(disposing)
-
-let appendName = "_modified"
 
 let modifyMtHeader (filePath: string, replacementValue: string) =
     let headerName = "h_mt"
@@ -171,42 +172,47 @@ let choosePublishIdHeader (filePath: string) =
     else
         printfn "Error: Publish ID must be at least 10 digits long and contain only numeric characters."
 
-[<EntryPoint>]
-let main argv =
-    let fileExtension = ".sfdm"
+let rec showMenuAndExecute filePath =
+    printfn "Choose an option:"
+    printfn "1. Unlock Official map"
+    printfn "2. Set Publish Id"
+    printf "Enter your choice (1 or 2): "
+    match Console.ReadLine() with
+    | "1" -> modifyMtHeader (filePath, "SFDMAPEDIT")
+    | "2" -> choosePublishIdHeader filePath
+    | _ ->
+        printfn "Invalid choice. Please try again."
+        showMenuAndExecute filePath
 
-    let rec showMenuAndExecute filePath =
-        printfn "Choose an option:"
-        printfn "1. Unlock Official map"
-        printfn "2. Set Publish Id"
-        printf "Enter your choice (1 or 2): "
-        match Console.ReadLine() with
-        | "1" -> modifyMtHeader (filePath, "SFDMAPEDIT")
-        | "2" -> choosePublishIdHeader filePath
-        | _ ->
-            printfn "Invalid choice. Please try again."
-            showMenuAndExecute filePath
+let args = Environment.GetCommandLineArgs()
 
-    if argv.Length = 1 then
-        let filePath = argv.[0].Trim('"')  // Strip quotes from filepath
-        if File.Exists(filePath) then
-            if Path.GetExtension(filePath).ToLower() = fileExtension then
-                showMenuAndExecute filePath
-            else
-                printfn "Error: File must have a %s extension." fileExtension
-        else
-            printfn "Error: File not found."
+// Check if the first argument has the expected extension
+let vargs =
+    if args.Length >= 1 && Path.GetExtension(args.[0]) = fileExtension then
+        args  // Keep all arguments
     else
-        printfn "Please drag and drop a %s file into the console." fileExtension
-        let filePath = Console.ReadLine().Trim('"')  // Strip quotes from filepath
-        if File.Exists(filePath) then
-            if Path.GetExtension(filePath).ToLower() = fileExtension then
-                showMenuAndExecute filePath
-            else
-                printfn "Error: File must have a %s extension." fileExtension
-        else
-            printfn "Error: File not found."
+        Array.tail args // Remove the first argument
 
-    printfn "Press any key to exit..."
-    Console.ReadKey() |> ignore
-    0
+if vargs.Length = 1 then
+    let filePath = vargs.[0].Trim('"')  // Strip quotes from filepath
+    if File.Exists(filePath) then
+        if Path.GetExtension(filePath).ToLower() = fileExtension then
+            showMenuAndExecute filePath
+        else
+            printfn "Error: File must have a %s extension." fileExtension
+    else
+        printfn "Error: File not found."
+else
+    printfn "Please drag and drop a %s file into the console." fileExtension
+    let filePath = Console.ReadLine().Trim('"')  // Strip quotes from filepath
+    if File.Exists(filePath) then
+        if Path.GetExtension(filePath).ToLower() = fileExtension then
+            showMenuAndExecute filePath
+        else
+            printfn "Error: File must have a %s extension." fileExtension
+    else
+        printfn "Error: File not found."
+
+printfn "Press any key to exit..."
+Console.ReadKey() |> ignore
+0
