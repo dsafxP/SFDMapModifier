@@ -181,7 +181,7 @@ let main argv =
             showMenuAndExecute filePath
 
     if argv.Length = 1 then
-        let filePath = argv.[0]
+        let filePath = argv.[0].Trim('"')  // Strip quotes from filepath
         if File.Exists(filePath) then
             if Path.GetExtension(filePath).ToLower() = fileExtension then
                 showMenuAndExecute filePath
@@ -191,7 +191,7 @@ let main argv =
             printfn "Error: File not found."
     else
         printfn "Please drag and drop a %s file into the console." fileExtension
-        let filePath = Console.ReadLine()
+        let filePath = Console.ReadLine().Trim('"')  // Strip quotes from filepath
         if File.Exists(filePath) then
             if Path.GetExtension(filePath).ToLower() = fileExtension then
                 showMenuAndExecute filePath
