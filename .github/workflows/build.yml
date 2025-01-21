@@ -1,0 +1,86 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  createrelease:
+    permissions:
+      contents: write
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: Release ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+    - name: Output Release URL File
+      run: echo "${{ steps.create_release.outputs.upload_url }}" > release_url.txt
+    - name: Save Release URL File for publish
+      uses: actions/upload-artifact@v4
+      with:
+        name: release_url
+        path: release_url.txt
+
+  build:
+    permissions:
+      contents: write
+    name: Build Packages
+    needs: createrelease
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            CMD_BUILD: fspack Program.fsx -sf -r win-x86 -o ./win-x86
+            ASSET_PATH: ./win-x86/Program.exe
+            OUT_FILE_NAME: SFDMapModifier-${{ github.ref_name }}-Win-x86.exe
+            ASSET_MIME: application/vnd.microsoft.portable-executable
+          - os: windows-latest
+            CMD_BUILD: fspack Program.fsx -sf -r win-x64 -o ./win-x64
+            ASSET_PATH: ./win-x64/Program.exe
+            OUT_FILE_NAME: SFDMapModifier-${{ github.ref_name }}-Win-x64.exe
+            ASSET_MIME: application/vnd.microsoft.portable-executable
+          - os: ubuntu-latest
+            CMD_BUILD: fspack Program.fsx -sf -r linux-x64 -o ./linux-x64
+            ASSET_PATH: ./linux-x64/Program
+            OUT_FILE_NAME: SFDMapModifier-${{ github.ref_name }}-Linux-x64
+            ASSET_MIME: application/zip
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '6.0.x'
+    - name: Install FSharpPacker
+      run: dotnet tool install --global FSharpPacker
+    - name: Build Package
+      run: ${{ matrix.CMD_BUILD }}
+    - name: Load Release URL
+      uses: actions/download-artifact@v4
+      with:
+        name: release_url
+    - name: Get Release Info
+      id: get_release_info
+      shell: bash
+      run: |
+        value=$(cat release_url.txt)
+        echo "upload_url=$value" >> $GITHUB_OUTPUT
+    - name: Upload Release Asset
+      id: upload_release_asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.get_release_info.outputs.upload_url }}
+        asset_path: ${{ matrix.ASSET_PATH }}
+        asset_name: ${{ matrix.OUT_FILE_NAME }}
+        asset_content_type: ${{ matrix.ASSET_MIME }}
