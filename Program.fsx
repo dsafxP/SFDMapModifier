@@ -89,7 +89,6 @@ let modifyPublishIdHeader(filePath: string, publishId: string) =
     let peiHeader = Encoding.ASCII.GetBytes("h_pei")
     let mHeader = [| byte 0x01; byte 0x4D; byte 0x01 |]
     let terminatorByte = byte 0x08
-    let nullByte = byte 0x00
 
     try
         use fs = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite)
@@ -172,14 +171,75 @@ let choosePublishIdHeader (filePath: string) =
     else
         printfn "Error: Publish ID must be at least 10 digits long and contain only numeric characters."
 
+let modifyVersion(filePath: string, versionCode: string) =
+    let startByte = byte 0x08
+    let terminatorByte = byte 0x04
+
+    try
+        use fs = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite)
+        use reader = new SFDBinaryReader(fs)
+
+        // Read the entire file into a byte array
+        let fileBytes = reader.BaseStream |> fun s -> Array.init (int s.Length) (fun _ -> reader.ReadByte())
+        let replacementBytes = Encoding.ASCII.GetBytes(versionCode)
+
+        // Find the first occurrence of the startByte
+        let startIndex =
+            fileBytes |> Array.tryFindIndex ((=) startByte)
+
+        match startIndex with
+        | Some sIdx ->
+            // Find the first occurrence of the terminatorByte after the startByte
+            let terminatorIndex =
+                fileBytes.[sIdx + 1..] |> Array.tryFindIndex ((=) terminatorByte)
+
+            match terminatorIndex with
+            | Some tIdx ->
+                let tIdxGlobal = sIdx + 1 + tIdx
+
+                // Split the file into three parts: before the startByte, the replacement, and after the terminatorByte
+                let beforeStart = fileBytes.[..sIdx]
+                let afterTerminator = fileBytes.[tIdxGlobal..]
+                let newFileBytes = Array.concat [beforeStart; replacementBytes; afterTerminator]
+
+                // Save the modified file
+                let newFilePath = Path.Combine(
+                                    Path.GetDirectoryName(filePath),
+                                    Path.GetFileNameWithoutExtension(filePath) + appendName + Path.GetExtension(filePath))
+                use writer = new SFDBinaryWriter(new FileStream(newFilePath, FileMode.Create, FileAccess.Write))
+                writer.Write(newFileBytes)
+
+                printfn "Successfully modified and saved the file: %s" newFilePath
+            | None ->
+                printfn "Error: Terminator byte not found after start byte."
+        | None ->
+            printfn "Error: Start byte not found in the file."
+    with
+    | :? IOException as ex -> printfn "I/O error: %s" ex.Message
+    | ex -> printfn "An error occurred: %s" ex.Message
+
+let chooseModifyVersion(filePath: string) =
+    let isValidVersion(versionCode: string) =
+        versionCode.StartsWith("v.1.") && versionCode.Length = 8
+
+    printf "Enter the version code (Example: v.1.0.0a): "
+    let versionCode = Console.ReadLine().Trim()
+
+    if (isValidVersion(versionCode)) then
+        modifyVersion(filePath, versionCode)
+    else
+        printfn "Error: Invalid version code."
+
 let rec showMenuAndExecute filePath =
     printfn "Choose an option:"
     printfn "1. Unlock Official map"
     printfn "2. Set Publish Id"
-    printf "Enter your choice (1 or 2): "
+    printfn "3. Set Version"
+    printf "Enter your choice: "
     match Console.ReadLine() with
     | "1" -> modifyMtHeader (filePath, "SFDMAPEDIT")
     | "2" -> choosePublishIdHeader filePath
+    | "3" -> chooseModifyVersion filePath
     | _ ->
         printfn "Invalid choice. Please try again."
         showMenuAndExecute filePath

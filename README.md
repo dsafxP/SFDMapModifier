@@ -11,3 +11,4 @@ Run the app and either drag a map file into the console or open it directly. Pre
 ### Options:
 1. Unlock Official map
 2. Set Steam Workshop Publish ID
+3. Set Version
