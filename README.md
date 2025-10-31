@@ -1,6 +1,6 @@
 [![Superfighters Deluxe Logo](.github/assets/SFD_titleLoop.gif)](https://www.superfightersdeluxe.com)
 
-# Superfighters Deluxe Map Modifier [![GitHub License](https://img.shields.io/github/license/dsafxP/SFDMapModifier)](LICENSE)
+# Superfighters Deluxe Map Modifier [![GitHub License](https://img.shields.io/github/license/dsafxP/SFDMapModifier)](LICENSE) [![GitHub Release](https://img.shields.io/github/v/release/dsafxP/SFDMapModifier)](https://github.com/dsafxP/SFDMapModifier/releases)
 
 A F# console tool to modify Superfighters Deluxe maps. This tool includes options that are not normally available, such as the ability to set the Steam Workshop publish ID.
 
