@@ -9,7 +9,14 @@
 
 </div>
 
-A F# CLI tool to modify Superfighters Deluxe maps. This tool includes options that are not normally available, such as the ability to set the Steam Workshop publish ID.
+A F# CLI tool to modify Superfighters Deluxe maps and scripts.
+
+This tool includes options that are not **normally available**, such as:
+
+- Unlocking official maps/scripts
+- Author locking or unlocking maps/scripts
+- Changing the Steam Workshop publish ID of a map/script
+- Changing the game version of a map/script
 
 ## ⚙️ Usage
 
