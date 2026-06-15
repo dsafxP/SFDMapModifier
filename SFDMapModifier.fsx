@@ -5,7 +5,7 @@ open System.IO
 open System.Text
 
 let appendName = "_modified"
-let version = "v1.1-dev"
+let version = "v1.2"
 
 type SFDBinaryReader(stream: Stream) =
     inherit BinaryReader(stream)
