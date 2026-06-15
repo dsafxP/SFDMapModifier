@@ -4,12 +4,12 @@
 
 # Superfighters Deluxe Map Modifier 
 
+A F# CLI tool to modify Superfighters Deluxe maps and scripts.
+
 [![GitHub License](https://img.shields.io/github/license/dsafxP/SFDMapModifier)](LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/dsafxP/SFDMapModifier)](https://github.com/dsafxP/SFDMapModifier/releases)
 
 </div>
-
-A F# CLI tool to modify Superfighters Deluxe maps and scripts.
 
 This tool includes options that are not **normally available**, such as:
 
