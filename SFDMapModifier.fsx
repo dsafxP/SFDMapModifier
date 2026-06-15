@@ -1,4 +1,6 @@
-﻿open System
+#!/usr/bin/env -S dotnet fsi --
+
+open System
 open System.IO
 open System.Text
 
