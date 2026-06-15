@@ -2,8 +2,8 @@
 open System.IO
 open System.Text
 
-let fileExtension = ".sfdm"
 let appendName = "_modified"
+let version = "v1.1-dev"
 
 type SFDBinaryReader(stream: Stream) =
     inherit BinaryReader(stream)
@@ -17,7 +17,7 @@ type SFDBinaryReader(stream: Stream) =
     member this.ReadStringNullDelimiter() =
         let rec readBytes (bytes: ResizeArray<byte>) =
             let b = this.ReadByte()
-            if b <> 0uy then 
+            if b <> 0uy then
                 bytes.Add(b)
                 readBytes bytes
             else
@@ -41,7 +41,11 @@ type SFDBinaryWriter(stream: Stream) =
     override this.Dispose(disposing: bool) =
         if this.AutoCloseStream then base.Dispose(disposing)
 
-let modifyMtHeader (filePath: string, replacementValue: string) =
+/// Parse a contiguous hex string (e.g. "31C2BD...") into raw bytes.
+let hexStringToBytes (hex: string) : byte[] =
+    [| for i in 0 .. 2 .. hex.Length - 2 -> Convert.ToByte(hex.[i..i+1], 16) |]
+
+let modifyMtHeader (filePath: string, replacementBytes: byte[]) =
     let headerName = "h_mt"
     let terminatorByte = byte 0x04
 
@@ -51,7 +55,6 @@ let modifyMtHeader (filePath: string, replacementValue: string) =
 
         let fileBytes = reader.BaseStream |> fun s -> Array.init (int s.Length) (fun _ -> reader.ReadByte())
         let headerBytes = Encoding.ASCII.GetBytes(headerName)
-        let replacementBytes = Encoding.ASCII.GetBytes(replacementValue)
 
         let offsets =
             fileBytes
@@ -65,7 +68,7 @@ let modifyMtHeader (filePath: string, replacementValue: string) =
             let terminatorIndex =
                 fileBytes.[valueStart..]
                 |> Array.tryFindIndex ((=) terminatorByte)
-            
+
             match terminatorIndex with
             | Some index ->
                 let terminatorOffset = valueStart + index
@@ -112,7 +115,7 @@ let modifyPublishIdHeader(filePath: string, publishId: string) =
             // Remove the extra null byte after the publish ID in the h_pei section
             let removePeiExtraByte =
                 newFileBytes1
-                |> Array.mapi (fun idx byte -> 
+                |> Array.mapi (fun idx byte ->
                     if idx = (offset + peiHeader.Length + publishIdWithPrefix.Length) then None
                     else Some byte)
                 |> Array.choose id
@@ -128,7 +131,7 @@ let modifyPublishIdHeader(filePath: string, publishId: string) =
                 // **Only remove one byte before the publish ID in the M header** (no other removal)
                 let beforeM = removePeiExtraByte.[..mOffset + mHeader.Length - 1]
                 let afterM = removePeiExtraByte.[(mOffset + mHeader.Length)..]
-                
+
                 // Remove just one byte before the publish ID and then insert it
                 let newFileBytes2 =
                     if mOffset + mHeader.Length < removePeiExtraByte.Length then
@@ -230,49 +233,153 @@ let chooseModifyVersion(filePath: string) =
     else
         printfn "Error: Invalid version code."
 
+let modifyAuthorLock (filePath: string, lockValue: bool) =
+    let headerName = "h_el"
+
+    try
+        use fs = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite)
+        use reader = new SFDBinaryReader(fs)
+
+        let fileBytes = reader.BaseStream |> fun s -> Array.init (int s.Length) (fun _ -> reader.ReadByte())
+        let headerBytes = Encoding.ASCII.GetBytes(headerName)
+
+        let offset =
+            fileBytes
+            |> Array.windowed headerBytes.Length
+            |> Array.tryFindIndex (fun window -> window = headerBytes)
+
+        match offset with
+        | Some idx ->
+            let boolOffset = idx + headerBytes.Length
+            let newByte = if lockValue then byte 0x01 else byte 0x00
+            let newFileBytes = Array.copy fileBytes
+            newFileBytes.[boolOffset] <- newByte
+
+            let newFilePath = Path.Combine(Path.GetDirectoryName(filePath), Path.GetFileNameWithoutExtension(filePath) + appendName + Path.GetExtension(filePath))
+            use writer = new SFDBinaryWriter(new FileStream(newFilePath, FileMode.Create, FileAccess.Write))
+            writer.Write(newFileBytes)
+
+            let action = if lockValue then "locked" else "unlocked"
+            printfn "Successfully %s author and saved the file: %s" action newFilePath
+        | None -> printfn "Error: 'h_el' header not found."
+    with
+    | :? IOException as ex -> printfn "I/O error: %s" ex.Message
+    | ex -> printfn "An error occurred: %s" ex.Message
+
+
 let rec showMenuAndExecute filePath =
     printfn "Choose an option:"
-    printfn "1. Unlock Official map"
-    printfn "2. Set Publish Id"
-    printfn "3. Set Version"
+    printfn "1. Official unlock"
+    printfn "2. Author lock"
+    printfn "3. Author unlock"
+    printfn "4. Set Publish Id"
+    printfn "5. Set Version"
     printf "Enter your choice: "
     match Console.ReadLine() with
-    | "1" -> modifyMtHeader (filePath, "SFDMAPEDIT")
-    | "2" -> choosePublishIdHeader filePath
-    | "3" -> chooseModifyVersion filePath
+    | "1" -> modifyMtHeader (filePath, Encoding.ASCII.GetBytes("SFDMAPEDIT"))
+    | "2" -> modifyAuthorLock (filePath, true)
+    | "3" -> modifyAuthorLock (filePath, false)
+    | "4" -> choosePublishIdHeader filePath
+    | "5" -> chooseModifyVersion filePath
     | _ ->
         printfn "Invalid choice. Please try again."
         showMenuAndExecute filePath
 
-let args = Environment.GetCommandLineArgs()
 
-// Check if the first argument has the expected extension
-let vargs =
-    if args.Length >= 1 && Path.GetExtension(args.[0]) = fileExtension then
-        args  // Keep all arguments
-    else
-        Array.tail args // Remove the first argument
+let printHelp () =
+    printfn "Usage: Program.fsx -f <file> [options]"
+    printfn ""
+    printfn "Options:"
+    printfn "  -f, --file <path>       Path to the file (required)"
+    printfn "  -i, --interactive       Launch interactive menu (default if no mode given)"
+    printfn "  -m, --mode <number>     Run a specific mode non-interactively:"
+    printfn "                            1 = Official unlock"
+    printfn "                            2 = Author lock"
+    printfn "                            3 = Author unlock"
+    printfn "                            4 = Set Publish ID  (requires -a <publishId>)"
+    printfn "                            5 = Set Version     (requires -a <versionCode>)"
+    printfn "  -a, --arg <value>       Argument for the selected mode"
+    printfn "  -h, --help              Show this help message"
+    printfn "  -V, --version           Print version and exit"
 
-if vargs.Length = 1 then
-    let filePath = vargs.[0].Trim('"')  // Strip quotes from filepath
-    if File.Exists(filePath) then
-        if Path.GetExtension(filePath).ToLower() = fileExtension then
-            showMenuAndExecute filePath
-        else
-            printfn "Error: File must have a %s extension." fileExtension
-    else
-        printfn "Error: File not found."
+let printVersion () =
+    printfn "%s" version
+
+let runMode (filePath: string) (mode: string) (modeArg: string option) =
+    match mode with
+    | "1" ->
+        modifyMtHeader (filePath, Encoding.ASCII.GetBytes("SFDMAPEDIT"))
+    | "2" ->
+        modifyAuthorLock (filePath, true)
+    | "3" ->
+        modifyAuthorLock (filePath, false)
+    | "4" ->
+        match modeArg with
+        | Some arg ->
+            let isValidPublishId (id: string) = id |> String.forall Char.IsDigit && id.Length >= 10
+            if isValidPublishId arg then modifyPublishIdHeader (filePath, arg)
+            else printfn "Error: Publish ID must be at least 10 digits long and contain only numeric characters."
+        | None -> printfn "Error: Mode 4 (Set Publish ID) requires -a <publishId>."
+    | "5" ->
+        match modeArg with
+        | Some arg ->
+            let isValidVersion (v: string) = v.StartsWith("v.1.") && v.Length = 8
+            if isValidVersion arg then modifyVersion (filePath, arg)
+            else printfn "Error: Invalid version code."
+        | None -> printfn "Error: Mode 5 (Set Version) requires -a <versionCode>."
+    | other ->
+        printfn "Error: Unknown mode '%s'. Valid modes are 1–5." other
+
+
+type CliArgs = {
+    File: string option
+    Mode: string option
+    ModeArg: string option
+    Interactive: bool
+    ShowHelp: bool
+    ShowVersion: bool
+}
+
+let defaultArgs = { File = None; Mode = None; ModeArg = None; Interactive = false; ShowHelp = false; ShowVersion = false }
+
+let rec parseArgs (tokens: string list) (acc: CliArgs) : CliArgs =
+    match tokens with
+    | [] -> acc
+    | ("-h" | "--help") :: rest ->
+        parseArgs rest { acc with ShowHelp = true }
+    | ("-V" | "--version") :: rest ->
+        parseArgs rest { acc with ShowVersion = true }
+    | ("-i" | "--interactive") :: rest ->
+        parseArgs rest { acc with Interactive = true }
+    | ("-f" | "--file") :: value :: rest ->
+        parseArgs rest { acc with File = Some (value.Trim('"')) }
+    | ("-m" | "--mode") :: value :: rest ->
+        parseArgs rest { acc with Mode = Some value }
+    | ("-a" | "--arg") :: value :: rest ->
+        parseArgs rest { acc with ModeArg = Some value }
+    | unknown :: rest ->
+        printfn "Warning: Unknown argument '%s' (ignored)." unknown
+        parseArgs rest acc
+
+
+let rawArgs = Environment.GetCommandLineArgs() |> Array.toList
+let cli = parseArgs rawArgs defaultArgs
+
+if cli.ShowHelp then
+    printHelp ()
+elif cli.ShowVersion then
+    printVersion ()
 else
-    printfn "Please drag and drop a %s file into the console." fileExtension
-    let filePath = Console.ReadLine().Trim('"')  // Strip quotes from filepath
-    if File.Exists(filePath) then
-        if Path.GetExtension(filePath).ToLower() = fileExtension then
-            showMenuAndExecute filePath
-        else
-            printfn "Error: File must have a %s extension." fileExtension
-    else
-        printfn "Error: File not found."
+    let filePath =
+        match cli.File with
+        | Some fp -> fp
+        | None ->
+            printfn "No file specified. Please drag and drop a file into the console or use -f <path>."
+            Console.ReadLine().Trim('"')
 
-printfn "Press any key to exit..."
-Console.ReadKey() |> ignore
-0
+    if File.Exists(filePath) then
+        match cli.Mode with
+        | Some m -> runMode filePath m cli.ModeArg
+        | None   -> showMenuAndExecute filePath   // -i flag or no mode = interactive
+    else
+        printfn "Error: File not found: %s" filePath
