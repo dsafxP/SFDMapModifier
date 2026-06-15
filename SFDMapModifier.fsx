@@ -49,7 +49,7 @@ let hexStringToBytes (hex: string) : byte[] =
 
 let modifyMtHeader (filePath: string, replacementBytes: byte[]) =
     let headerName = "h_mt"
-    let terminatorByte = byte 0x04
+    let terminatorBytes = [| byte 0x04; byte 0x05 |]
 
     try
         use fs = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite)
@@ -69,7 +69,7 @@ let modifyMtHeader (filePath: string, replacementBytes: byte[]) =
             let valueStart = secondOffset + headerBytes.Length
             let terminatorIndex =
                 fileBytes.[valueStart..]
-                |> Array.tryFindIndex ((=) terminatorByte)
+                |> Array.tryFindIndex (fun b -> Array.contains b terminatorBytes)
 
             match terminatorIndex with
             | Some index ->
